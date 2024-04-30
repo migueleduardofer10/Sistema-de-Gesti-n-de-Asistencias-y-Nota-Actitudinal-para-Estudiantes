@@ -38,9 +38,30 @@ def check_and_create_files(student_name):
 def log_attendance(student_name, timestamp, is_entry):
     attendance_filepath, details_filepath = check_and_create_files(student_name)
     df_times = pd.read_csv(attendance_filepath)
+    df_details = pd.read_csv(details_filepath) if pd.notna(details_filepath) else pd.DataFrame(columns=['STATUS', 'ATTITUDE_SCORE'])
 
     if is_entry:
         if df_times.empty or pd.notna(df_times['EXIT_TIME'].iloc[-1]):
+            if not df_times.empty and 'EXIT_TIME' in df_times.columns and pd.notna(df_times['EXIT_TIME'].iloc[-1]):
+                previous_exit_time = df_times['EXIT_TIME'].iloc[-1]
+                diff_time = (datetime.strptime(timestamp, "%H:%M:%S") - datetime.strptime(previous_exit_time, "%H:%M:%S")).seconds // 60
+                discounted_points = diff_time // 30  
+                df_times.at[len(df_times)-1, 'DIFF_TIME'] = diff_time
+                df_times.at[len(df_times)-1, 'DISCOUNTED_POINTS'] = discounted_points
+
+                # Verifica si df_details no está vacío antes de intentar acceder a un índice
+                if not df_details.empty:
+                    last_score = df_details['ATTITUDE_SCORE'].iloc[-1]
+                    new_score = max(0, last_score - discounted_points)
+                    df_details.at[len(df_details)-1, 'ATTITUDE_SCORE'] = new_score
+                else:
+                    # Si df_details está vacío, inicializa el primer registro con la puntuación inicial y los puntos descontados
+                    new_score = max(0, 20 - discounted_points)
+                    df_details = df_details._append({'STATUS': 'Asistencia', 'ATTITUDE_SCORE': new_score}, ignore_index=True)
+                
+            # Guarda los cambios en el archivo CSV
+            df_details.to_csv(details_filepath, index=False)
+
             new_entry = {'ENTRY_TIME': timestamp, 'EXIT_TIME': None, 'DIFF_TIME': None, 'DISCOUNTED_POINTS': None}
             df_times = df_times._append(new_entry, ignore_index=True)
             df_times.to_csv(attendance_filepath, index=False)
@@ -50,21 +71,17 @@ def log_attendance(student_name, timestamp, is_entry):
     else:
         if not df_times.empty and pd.isna(df_times['EXIT_TIME'].iloc[-1]):
             df_times.at[len(df_times)-1, 'EXIT_TIME'] = timestamp
-            entry_time = df_times.at[len(df_times)-1, 'ENTRY_TIME']
-            status, score, diff_time, discounted_points = calculate_status_and_score(entry_time, timestamp)
-            df_times.at[len(df_times)-1, 'DIFF_TIME'] = diff_time
-            df_times.at[len(df_times)-1, 'DISCOUNTED_POINTS'] = discounted_points
+            if len(df_times) > 1:
+                entry_time = df_times.at[len(df_times)-1, 'ENTRY_TIME']
+                status, score, diff_time, discounted_points = calculate_status_and_score(entry_time, timestamp)
+                df_times.at[len(df_times)-1, 'DIFF_TIME'] = diff_time
+                df_times.at[len(df_times)-1, 'DISCOUNTED_POINTS'] = discounted_points
+                df_details = df_details._append({'STATUS': status, 'ATTITUDE_SCORE': score}, ignore_index=True)
             df_times.to_csv(attendance_filepath, index=False)
-
-            # Update details file
-            details = {'STATUS': status, 'ATTITUDE_SCORE': score}
-            df_details = pd.DataFrame([details])
             df_details.to_csv(details_filepath, index=False)
-
             speak("Salida registrada.")
         else:
             speak("No puedes registrar una salida sin una entrada previa.")
-
 
 def calculate_status_and_score(entry_time, exit_time):
     entry_dt = datetime.strptime(entry_time, "%H:%M:%S")
@@ -94,9 +111,10 @@ knn=KNeighborsClassifier(n_neighbors=5)
 knn.fit(FACES, LABELS)
 
 
-imgBackground=cv2.imread("background.png")
+imgBackground=cv2.imread("background2.jpg")
 
 COL_NAMES = ['NAME', 'ENTRY_TIME', 'EXIT_TIME', 'ATTITUDE_SCORE']
+
 
 while True:
 
@@ -114,11 +132,10 @@ while True:
         date=datetime.fromtimestamp(ts).strftime("%y-%m-%d")
         timestamp=datetime.fromtimestamp(ts).strftime("%H:%M:%S")
         exist=os.path.isfile("Attendance/Attendance_" + date + ".csv")
-        cv2.rectangle(frame, (x,y), (x+w, y+h), (0,0,255), 1)
-        cv2.rectangle(frame, (x,y), (x+w, y+h), (50,50,255), 2)
-        cv2.rectangle(frame, (x,y-40), (x+w, y), (50,50,255), -1)
+        cv2.rectangle(frame, (x,y), (x+w, y+h), (39,32,0), 2)
+        cv2.rectangle(frame, (x,y-40), (x+w, y), (39,32,0), -1)
         cv2.putText(frame, str(output[0]), (x,y-15), cv2.FONT_HERSHEY_COMPLEX, 1, (255,255,255,255), 1)
-        cv2.rectangle(frame,(x,y), (x+w, y+h), (50,50,255), 1)
+        cv2.rectangle(frame,(x,y), (x+w, y+h), (39,32,0), 1)
         attendance=[str(output[0]), str(timestamp)]
 
     
