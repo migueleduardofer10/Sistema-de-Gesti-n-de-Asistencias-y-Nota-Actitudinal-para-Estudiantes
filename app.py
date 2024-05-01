@@ -46,7 +46,7 @@ try:
     df_times['ENTRY_TIME'] = pd.to_datetime(df_times['ENTRY_TIME'], errors='coerce').dt.time
     df_times['EXIT_TIME'] = pd.to_datetime(df_times['EXIT_TIME'], errors='coerce').dt.time
 
-    cutoff_time = datetime.strptime("19:35", "%H:%M").time()  # Hora de corte para la asistencia
+    cutoff_time = datetime.strptime("07:00", "%H:%M").time()  # Hora de corte para la asistencia
 
     st.write("Registros de Tiempos:")
     st.dataframe(df_times.style.applymap(lambda x: highlight_late(x, cutoff_time), subset=['ENTRY_TIME']))
