@@ -41,10 +41,12 @@ def log_attendance(student_name, timestamp, is_entry):
     df_details = pd.read_csv(details_filepath) if os.path.getsize(details_filepath) > 0 else pd.DataFrame(columns=['STATUS', 'ATTITUDE_SCORE'])
 
     if is_entry:
+        discounted_points = 0
         if not df_times.empty and pd.notna(df_times['EXIT_TIME'].iloc[-1]):
             previous_exit_time = df_times['EXIT_TIME'].iloc[-1]
             diff_time = (datetime.strptime(timestamp, "%H:%M:%S") - datetime.strptime(previous_exit_time, "%H:%M:%S")).seconds // 60
-            discounted_points = max(0, diff_time // 30)  
+            if diff_time > 30:
+                discounted_points = diff_time // 30  # Apply discount only for time over 30 minutes
 
             df_times.at[len(df_times) - 1, 'DIFF_TIME'] = diff_time
             df_times.at[len(df_times) - 1, 'DISCOUNTED_POINTS'] = discounted_points
@@ -59,13 +61,14 @@ def log_attendance(student_name, timestamp, is_entry):
 
         if not df_details.empty:
             last_score = df_details['ATTITUDE_SCORE'].iloc[-1]
-            # Comprobar si ya se ha aplicado una penalización por tardanza
             already_penalized = df_details['STATUS'].eq('Tardanza').any()
         else:
-            last_score = 20
+            last_score = 20  # Initial score for the first entry
             already_penalized = False
 
-        new_score = max(0, last_score - (4 if status == "Tardanza" and not already_penalized else 0))
+        # Apply tardiness penalty only once
+        tardiness_penalty = 4 if status == "Tardanza" and not already_penalized else 0
+        new_score = max(0, last_score - tardiness_penalty - discounted_points)
         df_details = df_details._append({'STATUS': status, 'ATTITUDE_SCORE': new_score}, ignore_index=True)
         df_details.to_csv(details_filepath, index=False)
         
