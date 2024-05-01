@@ -12,12 +12,13 @@ def load_data(student_file):
     details_df = pd.read_csv(details_path)
     return times_df, details_df
 
-def run_script(script_name):
+def run_script(script_name, course_name, session_date):
     try:
-        subprocess.run(['python', script_name], check=True)
+        subprocess.run(['python', script_name, course_name, session_date.strftime('%Y-%m-%d')], check=True)
         st.success(f"El proceso para {script_name} ha comenzado con éxito.")
     except subprocess.CalledProcessError as e:
         st.error(f"Falló la ejecución de {script_name}: {e}")
+
 
 def setup_course_page():
     st.title("Configuración del Curso")
@@ -36,8 +37,19 @@ def setup_course_page():
             st.session_state['courses'] = []
         st.session_state['courses'].append(course_info)
         st.success(f"Configuración guardada para el curso {class_name} desde {start_date} hasta {end_date}")
-    if 'courses' in st.session_state and st.session_state['courses']:
-        st.button("Agregar Caras al Curso", on_click=lambda: run_script('add_faces.py'))
+
+        # Botón para iniciar el proceso de agregar caras al curso
+        if st.button("Agregar Caras al Curso"):
+            run_script('add_faces.py', class_name, start_date)
+
+
+def list_detail_files(course_name, session_date):
+    session_date_str = session_date.strftime('%Y-%m-%d')
+    folder_path = f"Attendance/{course_name}_{session_date_str}"
+    if not os.path.exists(folder_path):
+        st.warning("No hay registros de detalles disponibles aún. Inicie la toma de asistencia para crear archivos.")
+        return [], folder_path  # Retorna listas vacías para evitar errores
+    return [f for f in os.listdir(folder_path) if f.endswith('_details.csv')], folder_path
 
 def session_page():
     st.title("Registro de Sesión")
@@ -61,7 +73,8 @@ def session_page():
                 st.session_state['sessions'][selected_course] = []
             st.session_state['sessions'][selected_course].append(session_info)
             st.success(f"Sesión registrada para {selected_course} el {session_date} de {session_start} a {session_end}")
-            st.button("Iniciar Asistencia", on_click=lambda: run_script('test.py'))
+            if st.button("Iniciar Asistencia"):
+                run_script('test.py', selected_course, session_date)
 
 def main():
     st.sidebar.title("Navegación")
