@@ -1,59 +1,76 @@
 import streamlit as st
 import pandas as pd
-import time
-from datetime import datetime
-from streamlit_autorefresh import st_autorefresh
 import os
+from datetime import datetime
+import subprocess
 
 def load_data(student_file):
-
-    base_name = student_file.split('_times')[0]  
+    base_name = student_file.split('_times')[0]
     times_path = f"Attendance/{student_file}"
     details_path = f"Attendance/{base_name}_details.csv"
-
     times_df = pd.read_csv(times_path)
     details_df = pd.read_csv(details_path)
-    
     return times_df, details_df
 
-def highlight_late(entry_time, cutoff_time):
-    if pd.isna(entry_time):
-        return ''
-    return 'background-color: #ffff99' if entry_time >= cutoff_time else ''
+def run_script(script_name):
+    try:
+        subprocess.run(['python', script_name], check=True)
+        st.success(f"El proceso para {script_name} ha comenzado con éxito.")
+    except subprocess.CalledProcessError as e:
+        st.error(f"Falló la ejecución de {script_name}: {e}")
 
-# Configurar la función de autorefresco de Streamlit
-count = st_autorefresh(interval=2000, limit=100, key="fizzbuzzcounter")
+def setup_course_page():
+    st.title("Configuración del Curso")
+    with st.form("course_form"):
+        class_name = st.text_input("Nombre del Curso")
+        start_date = st.date_input("Fecha de Inicio")
+        end_date = st.date_input("Fecha Fin")
+        submitted = st.form_submit_button("Guardar Configuración del Curso")
+    if submitted:
+        course_info = {
+            'class_name': class_name,
+            'start_date': str(start_date),
+            'end_date': str(end_date)
+        }
+        if 'courses' not in st.session_state:
+            st.session_state['courses'] = []
+        st.session_state['courses'].append(course_info)
+        st.success(f"Configuración guardada para el curso {class_name} desde {start_date} hasta {end_date}")
+    if 'courses' in st.session_state and st.session_state['courses']:
+        st.button("Agregar Caras al Curso", on_click=lambda: run_script('add_faces.py'))
 
-# Lógica de FizzBuzz para el contador de autorefresco
-if count == 0:
-    st.write("El contador está en cero")
-elif count % 3 == 0 and count % 5 == 0:
-    st.write("FizzBuzz")
-elif count % 3 == 0:
-    st.write("Fizz")
-elif count % 5 == 0:
-    st.write("Buzz")
-else:
-    st.write(f"Contador: {count}")
+def session_page():
+    st.title("Registro de Sesión")
+    if 'courses' in st.session_state and st.session_state['courses']:
+        course_list = [course['class_name'] for course in st.session_state['courses']]
+        selected_course = st.selectbox('Selecciona un curso', course_list)
+        with st.form("session_form"):
+            session_date = st.date_input("Fecha de la Sesión")
+            session_start = st.time_input("Hora de Inicio")
+            session_end = st.time_input("Hora de Fin")
+            session_submit = st.form_submit_button("Registrar Sesión")
+        if session_submit:
+            session_info = {
+                'date': str(session_date),
+                'start': str(session_start),
+                'end': str(session_end)
+            }
+            if 'sessions' not in st.session_state:
+                st.session_state['sessions'] = {}
+            if selected_course not in st.session_state['sessions']:
+                st.session_state['sessions'][selected_course] = []
+            st.session_state['sessions'][selected_course].append(session_info)
+            st.success(f"Sesión registrada para {selected_course} el {session_date} de {session_start} a {session_end}")
+            st.button("Iniciar Asistencia", on_click=lambda: run_script('test.py'))
 
-st.title("Sistema de Asistencia Estudiantil")
+def main():
+    st.sidebar.title("Navegación")
+    page = st.sidebar.radio("Ir a", ["Configuración del Curso", "Registro de Sesión"])
 
-selected_student = st.sidebar.selectbox('Selecciona un estudiante', [f for f in os.listdir('Attendance') if '_times.csv' in f])
+    if page == "Configuración del Curso":
+        setup_course_page()
+    elif page == "Registro de Sesión":
+        session_page()
 
-try:
-    df_times, df_details = load_data(selected_student)
-    
-    df_times['ENTRY_TIME'] = pd.to_datetime(df_times['ENTRY_TIME'], format="%H:%M:%S", errors='coerce').dt.time
-    df_times['EXIT_TIME'] = pd.to_datetime(df_times['EXIT_TIME'], format="%H:%M:%S", errors='coerce').dt.time
-    cutoff_time = datetime.strptime("07:00", "%H:%M").time()  # Hora de corte para la asistencia
-
-    st.write("Registros de Tiempos:")
-    st.dataframe(df_times.style.map(lambda x: highlight_late(x, cutoff_time), subset=['ENTRY_TIME']))
-
-    st.write("Detalles del Día:")
-    st.markdown(f"**Estado:** {df_details['STATUS'].iat[0]}")
-    st.markdown(f"**Puntuación de Actitud:** {df_details['ATTITUDE_SCORE'].iat[0]}")
-except FileNotFoundError:
-    st.error(f"No se encontraron datos de asistencia. Asegúrate de que el sistema esté capturando datos correctamente.")
-except Exception as e:
-    st.error(f"Ocurrió un error: {str(e)}")
+if __name__ == "__main__":
+    main()
