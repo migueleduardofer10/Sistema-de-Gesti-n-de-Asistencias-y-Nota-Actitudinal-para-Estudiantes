@@ -69,10 +69,9 @@ def log_attendance(student_name, timestamp, is_entry, course_name, session_date)
             last_score = df_details['ATTITUDE_SCORE'].iloc[-1]
             already_penalized = df_details['STATUS'].eq('Tardanza').any()
         else:
-            last_score = 20  # Initial score for the first entry
+            last_score = 20  
             already_penalized = False
 
-        # Apply tardiness penalty only once
         tardiness_penalty = 4 if status == "Tardanza" and not already_penalized else 0
         new_score = max(0, last_score - tardiness_penalty - discounted_points)
         df_details = df_details._append({'STATUS': status, 'ATTITUDE_SCORE': new_score}, ignore_index=True)
