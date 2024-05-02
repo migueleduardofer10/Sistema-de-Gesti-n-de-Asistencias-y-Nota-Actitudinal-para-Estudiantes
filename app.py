@@ -43,13 +43,12 @@ selected_student = st.sidebar.selectbox('Selecciona un estudiante', [f for f in 
 try:
     df_times, df_details = load_data(selected_student)
     
-    df_times['ENTRY_TIME'] = pd.to_datetime(df_times['ENTRY_TIME'], errors='coerce').dt.time
-    df_times['EXIT_TIME'] = pd.to_datetime(df_times['EXIT_TIME'], errors='coerce').dt.time
-
+    df_times['ENTRY_TIME'] = pd.to_datetime(df_times['ENTRY_TIME'], format="%H:%M:%S", errors='coerce').dt.time
+    df_times['EXIT_TIME'] = pd.to_datetime(df_times['EXIT_TIME'], format="%H:%M:%S", errors='coerce').dt.time
     cutoff_time = datetime.strptime("07:00", "%H:%M").time()  # Hora de corte para la asistencia
 
     st.write("Registros de Tiempos:")
-    st.dataframe(df_times.style.applymap(lambda x: highlight_late(x, cutoff_time), subset=['ENTRY_TIME']))
+    st.dataframe(df_times.style.map(lambda x: highlight_late(x, cutoff_time), subset=['ENTRY_TIME']))
 
     st.write("Detalles del Día:")
     st.markdown(f"**Estado:** {df_details['STATUS'].iat[0]}")
