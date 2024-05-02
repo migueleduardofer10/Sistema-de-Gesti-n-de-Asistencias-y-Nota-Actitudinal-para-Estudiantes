@@ -3,6 +3,7 @@ import pandas as pd
 import os
 from datetime import datetime
 import subprocess
+from functools import partial
 
 def load_data(student_file):
     base_name = student_file.split('_times')[0]
@@ -12,13 +13,16 @@ def load_data(student_file):
     details_df = pd.read_csv(details_path)
     return times_df, details_df
 
+
 def run_script(script_name, course_name, session_date):
     try:
+        # Format the date and execute the script
         subprocess.run(['python', script_name, course_name, session_date.strftime('%Y-%m-%d')], check=True)
         st.success(f"El proceso para {script_name} ha comenzado con éxito.")
     except subprocess.CalledProcessError as e:
         st.error(f"Falló la ejecución de {script_name}: {e}")
-
+    except Exception as e:
+        st.error(f"Error desconocido al ejecutar {script_name}: {str(e)}")
 
 def setup_course_page():
     st.title("Configuración del Curso")
@@ -73,8 +77,9 @@ def session_page():
                 st.session_state['sessions'][selected_course] = []
             st.session_state['sessions'][selected_course].append(session_info)
             st.success(f"Sesión registrada para {selected_course} el {session_date} de {session_start} a {session_end}")
-            if st.button("Iniciar Asistencia"):
-                run_script('test.py', selected_course, session_date)
+            # Setup button with partial to avoid lambda issues and ensure correct parameter passing
+            button_callback = partial(run_script, 'test.py', selected_course, session_date)
+            st.button("Iniciar Asistencia", on_click=button_callback)
 
 def main():
     st.sidebar.title("Navegación")
