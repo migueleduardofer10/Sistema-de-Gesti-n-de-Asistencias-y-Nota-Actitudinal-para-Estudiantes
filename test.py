@@ -19,7 +19,7 @@ def speak(text):
 
 def check_and_create_files(student_name, course_name, session_date):
     today = datetime.now().strftime('%Y-%m-%d')
-    base_dir = f"Attendance/{course_name}_{session_date}_{student_name}"
+    base_dir = f"Attendance/{course_name}_{session_date}_{student_name}"  #
     attendance_filepath = f"{base_dir}_times.csv"
     details_filepath = f"{base_dir}_details.csv"
 
