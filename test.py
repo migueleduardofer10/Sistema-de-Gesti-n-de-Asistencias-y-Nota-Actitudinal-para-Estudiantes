@@ -8,7 +8,7 @@ import csv
 import time
 from datetime import datetime, timedelta
 import sys
-
+import json
 
 from win32com.client import Dispatch
 
@@ -111,31 +111,47 @@ def calculate_status_and_score(entry_time, exit_time):
 video = cv2.VideoCapture(0)
 facedetect = cv2.CascadeClassifier('data/haarcascade_frontalface_default.xml')
 
-
 with open('data/names.pkl', 'rb') as f:
-    LABELS=pickle.load(f)
+    LABELS = pickle.load(f)
+with open('data/faces_data.pkl', 'rb') as f:
+    FACES = pickle.load(f)
 
-with open('data/faces_data.pkl','rb') as f:
-    FACES=pickle.load(f)
-
-knn=KNeighborsClassifier(n_neighbors=5)
+knn = KNeighborsClassifier(n_neighbors=5)
 knn.fit(FACES, LABELS)
 
+imgBackground = cv2.imread("background2.jpg")
 
-imgBackground=cv2.imread("background2.jpg")
-
-COL_NAMES = ['NAME', 'ENTRY_TIME', 'EXIT_TIME', 'ATTITUDE_SCORE']
+# Read session information from JSON
+file_path = 'configured_courses/courses_data.json'
+if os.path.exists(file_path):
+    with open(file_path, 'r') as file:
+        courses_data = json.load(file)
+else:
+    print("Course configuration file not found.")
+    sys.exit()
 
 course_name = "DefaultCourse"
 session_date = datetime.now().strftime("%Y-%m-%d")
 
+# Argument handling
 if len(sys.argv) > 1:
     course_name = sys.argv[1]
 if len(sys.argv) > 2:
     session_date = sys.argv[2]
 
+session_info = None
+for course in courses_data:
+    if course['class_name'] == course_name:
+        if 'sessions' in course:
+            for session in course['sessions']:
+                if session['date'] == session_date:
+                    session_info = session
+                    break
+if not session_info:
+    print("Session information not found for the given course and date.")
+    sys.exit()
+
 while True:
-    
     ret, frame = video.read()
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     faces = facedetect.detectMultiScale(gray, 1.3, 5)
@@ -145,26 +161,22 @@ while True:
         resized_img = cv2.resize(crop_img, (50,50)).flatten().reshape(1, -1)
         output = knn.predict(resized_img)
         ts = time.time()
-        date = datetime.fromtimestamp(ts).strftime("%Y-%m-%d")  
+        date = datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
         timestamp = datetime.fromtimestamp(ts).strftime("%H:%M:%S")
         exist = os.path.isfile(f"Attendance/{course_name}_{session_date}/{output[0]}_{date}.csv")
         cv2.rectangle(frame, (x, y), (x+w, y+h), (39, 32, 0), 2)
         cv2.rectangle(frame, (x, y-40), (x+w, y), (39, 32, 0), -1)
         cv2.putText(frame, str(output[0]), (x, y-15), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255, 255), 1)
-        cv2.rectangle(frame, (x, y), (x+w, y+h), (39, 32, 0), 1)
-        attendance = [str(output[0]), str(timestamp)]
 
-    
     imgBackground[162:162 + 480, 55:55 + 640] = frame
 
     if ret:
         cv2.imshow("frame", imgBackground)
-    
+
     k = cv2.waitKey(1)
-    if k == ord('e'):
-        log_attendance(str(output[0]), timestamp, is_entry=True, course_name=course_name, session_date=session_date)
-    elif k == ord('x'):
-        log_attendance(str(output[0]), timestamp, is_entry=False, course_name=course_name, session_date=session_date)
+    if k == ord('e') or k == ord('x'):
+        is_entry = k == ord('e')
+        log_attendance(str(output[0]), timestamp, is_entry=is_entry, course_name=course_name, session_date=session_date)
     elif k == ord('q'):
         break
 

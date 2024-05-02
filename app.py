@@ -95,7 +95,7 @@ def session_page():
                     'start': str(session_start),
                     'end': str(session_end)
                 }
-                # Encontrar el curso específico y añadir la información de la sesión
+
                 for course in courses_data:
                     if course['class_name'] == selected_course:
                         if 'sessions' not in course:
@@ -103,20 +103,19 @@ def session_page():
                         course['sessions'].append(session_info)
                         break
 
-                # Guardar los cambios en el archivo JSON
+
                 with open(file_path, 'w') as file:
                     json.dump(courses_data, file, indent=4)
 
                 st.success(f"Sesión registrada para {selected_course} el {session_date} de {session_start} a {session_end}")
 
-                # Setup button with partial to avoid lambda issues and ensure correct parameter passing
                 button_callback = partial(run_script, 'test.py', selected_course, session_date)
                 st.button("Iniciar Asistencia", on_click=button_callback)
         else:
             st.error("No hay cursos configurados.")
     else:
         st.error("No se ha configurado ningún curso aún.")
-        
+ 
 def main():
     st.sidebar.title("Navegación")
     page = st.sidebar.radio("Ir a", ["Configuración del Curso", "Registro de Sesión", "Visualizar Archivos"])
