@@ -137,8 +137,8 @@ def main():
                 detail_files, time_files = list_files(selected_course, selected_date)
 
                 if detail_files or time_files:
-                    file_type = st.radio("Tipo de Archivo", ("Detalles", "Tiempos"))
-                    selected_file_list = detail_files if file_type == "Detalles" else time_files
+                    file_type = st.radio("Tipo de Archivo", ("Reporte de Entradas y Salidas", "Reporte Actitudinal Diario"))
+                    selected_file_list = detail_files if file_type == "Reporte Actitudinal Diario" else time_files
                     selected_file = st.selectbox('Selecciona un archivo', selected_file_list)
                     if st.button('Cargar Archivo'):
                         view_file(selected_file)
