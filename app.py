@@ -4,6 +4,7 @@ import os
 from datetime import datetime
 import subprocess
 from functools import partial
+import re 
 
 def load_data(student_file):
     base_name = student_file.split('_times')[0]
@@ -47,14 +48,21 @@ def setup_course_page():
             run_script('add_faces.py', class_name, start_date)
 
 
-def list_detail_files(course_name, session_date):
-    session_date_str = session_date.strftime('%Y-%m-%d')
-    folder_path = f"Attendance/{course_name}_{session_date_str}"
+def list_files(course_name, date):
+    session_date_str = date.strftime('%Y-%m-%d')
+    folder_path = "Attendance"
     if not os.path.exists(folder_path):
-        st.warning("No hay registros de detalles disponibles aún. Inicie la toma de asistencia para crear archivos.")
-        return [], folder_path  # Retorna listas vacías para evitar errores
-    return [f for f in os.listdir(folder_path) if f.endswith('_details.csv')], folder_path
+        st.sidebar.write(f"Directorio no encontrado: {folder_path}")
+        return [], []
+    all_files = os.listdir(folder_path)
+    detail_files = [f for f in all_files if f.startswith(f"{course_name}_{session_date_str}") and "_details.csv" in f]
+    time_files = [f for f in all_files if f.startswith(f"{course_name}_{session_date_str}") and "_times.csv" in f]
+    return detail_files, time_files
 
+def view_file(file_path):
+    df = pd.read_csv(f"Attendance/{file_path}")
+    st.write(df)
+    
 def session_page():
     st.title("Registro de Sesión")
     if 'courses' in st.session_state and st.session_state['courses']:
@@ -81,14 +89,30 @@ def session_page():
             button_callback = partial(run_script, 'test.py', selected_course, session_date)
             st.button("Iniciar Asistencia", on_click=button_callback)
 
+
 def main():
     st.sidebar.title("Navegación")
-    page = st.sidebar.radio("Ir a", ["Configuración del Curso", "Registro de Sesión"])
+    page = st.sidebar.radio("Ir a", ["Configuración del Curso", "Registro de Sesión", "Visualizar Archivos"])
 
     if page == "Configuración del Curso":
         setup_course_page()
     elif page == "Registro de Sesión":
         session_page()
+    elif page == "Visualizar Archivos":
+        if 'courses' in st.session_state and st.session_state['courses']:
+            course_list = [course['class_name'] for course in st.session_state['courses']]
+            selected_course = st.selectbox('Selecciona un Curso para visualizar archivos', course_list)
+            selected_date = st.date_input("Selecciona la fecha del curso")
+            detail_files, time_files = list_files(selected_course, selected_date)
+            
+            if detail_files or time_files:
+                file_type = st.radio("Tipo de Archivo", ("Detalles", "Tiempos"))
+                selected_file_list = detail_files if file_type == "Detalles" else time_files
+                selected_file = st.selectbox('Selecciona un archivo', selected_file_list)
+                if st.button('Cargar Archivo'):
+                    view_file(selected_file)
+            else:
+                st.error("No se encontraron archivos para este curso y fecha.")
 
 if __name__ == "__main__":
     main()
