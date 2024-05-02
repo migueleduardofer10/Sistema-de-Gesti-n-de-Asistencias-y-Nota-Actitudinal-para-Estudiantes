@@ -145,7 +145,7 @@ while True:
         resized_img = cv2.resize(crop_img, (50,50)).flatten().reshape(1, -1)
         output = knn.predict(resized_img)
         ts = time.time()
-        date = datetime.fromtimestamp(ts).strftime("%Y-%m-%d")  # Using session_date if needed
+        date = datetime.fromtimestamp(ts).strftime("%Y-%m-%d")  
         timestamp = datetime.fromtimestamp(ts).strftime("%H:%M:%S")
         exist = os.path.isfile(f"Attendance/{course_name}_{session_date}/{output[0]}_{date}.csv")
         cv2.rectangle(frame, (x, y), (x+w, y+h), (39, 32, 0), 2)

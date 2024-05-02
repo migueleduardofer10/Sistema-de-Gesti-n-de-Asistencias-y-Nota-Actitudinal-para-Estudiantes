@@ -5,6 +5,7 @@ from datetime import datetime
 import subprocess
 from functools import partial
 import re 
+import json
 
 def load_data(student_file):
     base_name = student_file.split('_times')[0]
@@ -38,22 +39,26 @@ def setup_course_page():
             'start_date': str(start_date),
             'end_date': str(end_date)
         }
-        # Directorio para guardar los datos
         directory = 'configured_courses'
         if not os.path.exists(directory):
             os.makedirs(directory)
-        file_path = os.path.join(directory, 'courses_data.csv')
+        file_path = os.path.join(directory, 'courses_data.json')
+        
         if os.path.exists(file_path):
-            df = pd.DataFrame([course_info])
-            df.to_csv(file_path, mode='a', header=False, index=False)
+            with open(file_path, 'r') as file:
+                data = json.load(file)
+                data.append(course_info)  
         else:
-            df = pd.DataFrame([course_info])
-            df.to_csv(file_path, mode='w', header=True, index=False)
+            data = [course_info]  
+        
+        with open(file_path, 'w') as file:
+            json.dump(data, file, indent=4)
+        
         st.success(f"Configuración guardada para el curso {class_name} desde {start_date} hasta {end_date}")
         
         if st.button("Agregar Caras al Curso"):
-            run_script('add_faces.py', class_name, start_date)             
-                       
+            run_script('add_faces.py', class_name, start_date)
+
 def list_files(course_name, date):
     session_date_str = date.strftime('%Y-%m-%d')
     folder_path = "Attendance"
@@ -71,13 +76,13 @@ def view_file(file_path):
     
 def session_page():
     st.title("Registro de Sesión")
-    
-    # Cargar los nombres de los cursos desde el archivo CSV
-    file_path = 'configured_courses/courses_data.csv'
+
+    file_path = 'configured_courses/courses_data.json'
     if os.path.exists(file_path):
-        courses_df = pd.read_csv(file_path)
-        if not courses_df.empty:
-            course_list = courses_df['class_name'].unique().tolist()
+        with open(file_path, 'r') as file:
+            courses_data = json.load(file)
+        if courses_data:
+            course_list = [course['class_name'] for course in courses_data]
             selected_course = st.selectbox('Selecciona un curso', course_list)
             with st.form("session_form"):
                 session_date = st.date_input("Fecha de la Sesión")
@@ -90,14 +95,20 @@ def session_page():
                     'start': str(session_start),
                     'end': str(session_end)
                 }
-                # Guardar información de sesión, puedes elegir guardar en un archivo o en el estado de sesión
-                if 'sessions' not in st.session_state:
-                    st.session_state['sessions'] = {}
-                if selected_course not in st.session_state['sessions']:
-                    st.session_state['sessions'][selected_course] = []
-                st.session_state['sessions'][selected_course].append(session_info)
+                # Encontrar el curso específico y añadir la información de la sesión
+                for course in courses_data:
+                    if course['class_name'] == selected_course:
+                        if 'sessions' not in course:
+                            course['sessions'] = []
+                        course['sessions'].append(session_info)
+                        break
+
+                # Guardar los cambios en el archivo JSON
+                with open(file_path, 'w') as file:
+                    json.dump(courses_data, file, indent=4)
+
                 st.success(f"Sesión registrada para {selected_course} el {session_date} de {session_start} a {session_end}")
-                
+
                 # Setup button with partial to avoid lambda issues and ensure correct parameter passing
                 button_callback = partial(run_script, 'test.py', selected_course, session_date)
                 st.button("Iniciar Asistencia", on_click=button_callback)
@@ -105,7 +116,7 @@ def session_page():
             st.error("No hay cursos configurados.")
     else:
         st.error("No se ha configurado ningún curso aún.")
-
+        
 def main():
     st.sidebar.title("Navegación")
     page = st.sidebar.radio("Ir a", ["Configuración del Curso", "Registro de Sesión", "Visualizar Archivos"])
@@ -115,12 +126,13 @@ def main():
     elif page == "Registro de Sesión":
         session_page()
     elif page == "Visualizar Archivos":
-        # Cargar los nombres de los cursos desde el archivo CSV
-        file_path = 'configured_courses/courses_data.csv'
+        # Cargar los nombres de los cursos desde el archivo JSON
+        file_path = 'configured_courses/courses_data.json'
         if os.path.exists(file_path):
-            courses_df = pd.read_csv(file_path)
-            if not courses_df.empty:
-                course_list = courses_df['class_name'].unique().tolist()
+            with open(file_path, 'r') as file:
+                courses_data = json.load(file)
+            if courses_data:
+                course_list = [course['class_name'] for course in courses_data]
                 selected_course = st.selectbox('Selecciona un Curso para visualizar archivos', course_list)
                 selected_date = st.date_input("Selecciona la fecha del curso")
                 detail_files, time_files = list_files(selected_course, selected_date)
