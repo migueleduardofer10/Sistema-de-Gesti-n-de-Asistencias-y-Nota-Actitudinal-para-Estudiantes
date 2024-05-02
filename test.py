@@ -76,7 +76,7 @@ def log_attendance(student_name, timestamp, is_entry, course_name, session_date)
         tardiness_penalty = 4 if status == "Tardanza" and not already_penalized else 0
         new_score = max(0, last_score - tardiness_penalty - discounted_points)
         df_details = df_details._append({'STATUS': status, 'ATTITUDE_SCORE': new_score}, ignore_index=True)
-        df_details.to_csv(details_filepath, index=False)
+        df_details.iloc[-1:].to_csv(details_filepath, index=False)
         
         speak("Entrada registrada.")
 
