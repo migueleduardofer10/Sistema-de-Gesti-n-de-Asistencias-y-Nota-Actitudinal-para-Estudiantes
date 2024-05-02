@@ -7,6 +7,7 @@ import os
 import csv
 import time
 from datetime import datetime, timedelta
+import sys
 
 
 from win32com.client import Dispatch
@@ -16,10 +17,14 @@ def speak(text):
     speaker = Dispatch("SAPI.SpVoice")
     speaker.Speak(text)
 
-def check_and_create_files(student_name):
+def check_and_create_files(student_name, course_name, session_date):
     today = datetime.now().strftime('%Y-%m-%d')
-    attendance_filepath = f"Attendance/{student_name}_{today}_times.csv"
-    details_filepath = f"Attendance/{student_name}_{today}_details.csv"
+    base_dir = f"Attendance/{course_name}_{session_date}_{student_name}"
+    attendance_filepath = f"{base_dir}_{today}_times.csv"
+    details_filepath = f"{base_dir}_{today}_details.csv"
+
+    if not os.path.exists(os.path.dirname(attendance_filepath)):
+        os.makedirs(os.path.dirname(attendance_filepath))
 
     if not os.path.isfile(attendance_filepath):
         with open(attendance_filepath, 'w', newline='') as csvfile:
@@ -34,8 +39,10 @@ def check_and_create_files(student_name):
             writer.to_csv(csvfile, index=False)
 
     return attendance_filepath, details_filepath
-def log_attendance(student_name, timestamp, is_entry):
-    attendance_filepath, details_filepath = check_and_create_files(student_name)
+
+
+def log_attendance(student_name, timestamp, is_entry, course_name, session_date):
+    attendance_filepath, details_filepath = check_and_create_files(student_name, course_name, session_date)
     df_times = pd.read_csv(attendance_filepath)
     df_details = pd.read_csv(details_filepath) if os.path.isfile(details_filepath) else pd.DataFrame(columns=['STATUS', 'ATTITUDE_SCORE'])
 
@@ -119,28 +126,33 @@ imgBackground=cv2.imread("background2.jpg")
 
 COL_NAMES = ['NAME', 'ENTRY_TIME', 'EXIT_TIME', 'ATTITUDE_SCORE']
 
+course_name = "DefaultCourse"
+session_date = datetime.now().strftime("%Y-%m-%d")
+
+if len(sys.argv) > 1:
+    course_name = sys.argv[1]
+if len(sys.argv) > 2:
+    session_date = sys.argv[2]
 
 while True:
-
-    ret, frame = video.read()
     
+    ret, frame = video.read()
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    faces = facedetect.detectMultiScale(gray, 1.3, 5)
 
-    faces=facedetect.detectMultiScale(gray, 1.3, 5)
-
-    for(x,y,w,h) in faces:
+    for (x, y, w, h) in faces:
         crop_img = frame[y: y+h, x:x+w, :]
         resized_img = cv2.resize(crop_img, (50,50)).flatten().reshape(1, -1)
-        output=knn.predict(resized_img)
-        ts=time.time()
-        date=datetime.fromtimestamp(ts).strftime("%y-%m-%d")
-        timestamp=datetime.fromtimestamp(ts).strftime("%H:%M:%S")
-        exist=os.path.isfile("Attendance/Attendance_" + date + ".csv")
-        cv2.rectangle(frame, (x,y), (x+w, y+h), (39,32,0), 2)
-        cv2.rectangle(frame, (x,y-40), (x+w, y), (39,32,0), -1)
-        cv2.putText(frame, str(output[0]), (x,y-15), cv2.FONT_HERSHEY_COMPLEX, 1, (255,255,255,255), 1)
-        cv2.rectangle(frame,(x,y), (x+w, y+h), (39,32,0), 1)
-        attendance=[str(output[0]), str(timestamp)]
+        output = knn.predict(resized_img)
+        ts = time.time()
+        date = datetime.fromtimestamp(ts).strftime("%Y-%m-%d")  # Using session_date if needed
+        timestamp = datetime.fromtimestamp(ts).strftime("%H:%M:%S")
+        exist = os.path.isfile(f"Attendance/{course_name}_{session_date}/{output[0]}_{date}.csv")
+        cv2.rectangle(frame, (x, y), (x+w, y+h), (39, 32, 0), 2)
+        cv2.rectangle(frame, (x, y-40), (x+w, y), (39, 32, 0), -1)
+        cv2.putText(frame, str(output[0]), (x, y-15), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255, 255), 1)
+        cv2.rectangle(frame, (x, y), (x+w, y+h), (39, 32, 0), 1)
+        attendance = [str(output[0]), str(timestamp)]
 
     
     imgBackground[162:162 + 480, 55:55 + 640] = frame
@@ -148,15 +160,13 @@ while True:
     if ret:
         cv2.imshow("frame", imgBackground)
     
-
     k = cv2.waitKey(1)
-    if k == ord('e'): 
-        log_attendance(str(output[0]), timestamp, is_entry=True)
-    elif k == ord('x'): 
-        log_attendance(str(output[0]), timestamp, is_entry=False)
+    if k == ord('e'):
+        log_attendance(str(output[0]), timestamp, is_entry=True, course_name=course_name, session_date=session_date)
+    elif k == ord('x'):
+        log_attendance(str(output[0]), timestamp, is_entry=False, course_name=course_name, session_date=session_date)
     elif k == ord('q'):
         break
-
 
 video.release()
 cv2.destroyAllWindows()
