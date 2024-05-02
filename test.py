@@ -37,7 +37,7 @@ def check_and_create_files(student_name):
 def log_attendance(student_name, timestamp, is_entry):
     attendance_filepath, details_filepath = check_and_create_files(student_name)
     df_times = pd.read_csv(attendance_filepath)
-    df_details = pd.read_csv(details_filepath) if os.path.isfile(details_filepath) else pd.DataFrame(columns=['STATUS', 'ATTITUDE_SCORE'])
+    df_details = pd.read_csv(details_filepath) if pd.notna(details_filepath) else pd.DataFrame(columns=['STATUS', 'ATTITUDE_SCORE'])
 
     if is_entry:
         if df_times.empty or pd.notna(df_times['EXIT_TIME'].iloc[-1]):
@@ -48,24 +48,16 @@ def log_attendance(student_name, timestamp, is_entry):
                 df_times.at[len(df_times)-1, 'DIFF_TIME'] = diff_time
                 df_times.at[len(df_times)-1, 'DISCOUNTED_POINTS'] = discounted_points
 
-                entry_time = timestamp if df_times.empty else df_times['ENTRY_TIME'].iloc[0]
-                status, initial_score, diff_time, discounted_points = calculate_status_and_score(entry_time, timestamp)
-                print("Initial Score:", initial_score)
-                print("Status:", status)
-                print("Difference Time:", diff_time)
-                print("Discounted Points:", discounted_points)
-
-                status, initial_score, _, _ = calculate_status_and_score(entry_time, timestamp)
-                
                 if not df_details.empty:
-                    last_score = df_details['ATTITUDE_SCORE'].iloc[0]
+                    last_score = df_details['ATTITUDE_SCORE'].iloc[-1]
                     new_score = max(0, last_score - discounted_points)
-                else:
-                    new_score = max(0, initial_score - discounted_points)
-                    df_details = df_details._append({'STATUS': status, 'ATTITUDE_SCORE': new_score}, ignore_index=True)
+                    df_details.at[len(df_details)-1, 'ATTITUDE_SCORE'] = new_score
+                else:                    
+                    new_score = max(0, 20 - discounted_points)
+                    df_details = df_details._append({'STATUS': 'Asistencia', 'ATTITUDE_SCORE': new_score}, ignore_index=True)
                 
-                df_details.at[0, 'ATTITUDE_SCORE'] = new_score
-                df_details.to_csv(details_filepath, index=False)
+            # Guarda los cambios en el archivo CSV
+            df_details.to_csv(details_filepath, index=False)
 
             new_entry = {'ENTRY_TIME': timestamp, 'EXIT_TIME': None, 'DIFF_TIME': None, 'DISCOUNTED_POINTS': None}
             df_times = df_times._append(new_entry, ignore_index=True)
@@ -76,29 +68,40 @@ def log_attendance(student_name, timestamp, is_entry):
     else:
         if not df_times.empty and pd.isna(df_times['EXIT_TIME'].iloc[-1]):
             df_times.at[len(df_times)-1, 'EXIT_TIME'] = timestamp
+            if len(df_times) > 1:
+                entry_time = df_times.at[len(df_times)-1, 'ENTRY_TIME']
+                status, score, diff_time, discounted_points = calculate_status_and_score(entry_time, timestamp, df_details)
+                df_times.at[len(df_times)-1, 'DIFF_TIME'] = diff_time
+                df_times.at[len(df_times)-1, 'DISCOUNTED_POINTS'] = discounted_points
+                df_details = df_details._append({'STATUS': status, 'ATTITUDE_SCORE': score}, ignore_index=True)
             df_times.to_csv(attendance_filepath, index=False)
+            df_details.to_csv(details_filepath, index=False)
             speak("Salida registrada.")
         else:
             speak("No puedes registrar una salida sin una entrada previa.")
 
-def calculate_status_and_score(entry_time, exit_time):
+def calculate_status_and_score(entry_time, exit_time, df_details):
     entry_dt = datetime.strptime(entry_time, "%H:%M:%S")
     exit_dt = datetime.strptime(exit_time, "%H:%M:%S")
-    initial_score = 20  
-    cutoff_time = datetime.strptime("07:00", "%H:%M").time()
 
+    if not df_details.empty and 'ATTITUDE_SCORE' in df_details.columns:
+        initial_score = df_details['ATTITUDE_SCORE'].iloc[-1]  
+    else:
+        initial_score = 20  
+
+    cutoff_time = datetime.strptime("07:00:00", "%H:%M:%S").time()
     if entry_dt.time() > cutoff_time:
-        initial_score -= 4  
+        initial_score = max(0, initial_score - 4)  
 
     diff_time = int((exit_dt - entry_dt).total_seconds() / 60)
-    extra_time = max(0, diff_time - 30)
-    print("Extra time", extra_time)
-    discounted_points = (extra_time // 30) * 1 
-    
-    final_score = max(0, initial_score - discounted_points)
+    extra_time = max(0, (exit_dt - entry_dt - timedelta(minutes=30)).total_seconds() / 1800)
+    score = max(0, initial_score - int(extra_time))
+    discounted_points = initial_score - score
     status = 'Asistencia' if entry_dt.time() <= cutoff_time else 'Tardanza'
+    
+    return status, score, diff_time, discounted_points
 
-    return status, final_score, diff_time, discounted_points
+
 
 
 video = cv2.VideoCapture(0)
