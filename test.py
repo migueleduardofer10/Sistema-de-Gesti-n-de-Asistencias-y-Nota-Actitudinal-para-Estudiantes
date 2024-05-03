@@ -40,8 +40,9 @@ def check_and_create_files(student_name, course_name, session_date):
     return attendance_filepath, details_filepath
 
 
-def log_attendance(student_name, timestamp, is_entry, course_name, session_date):
-    # Incluimos los nuevos parámetros en la llamada a check_and_create_files
+def log_attendance(student_name, timestamp, is_entry, course_name, session_date, start_time, end_time):
+    print("Start Time ", start_time)
+    print("End Time ", end_time)
     attendance_filepath, details_filepath = check_and_create_files(student_name, course_name, session_date)
     df_times = pd.read_csv(attendance_filepath)
     df_details = pd.read_csv(details_filepath) if os.path.getsize(details_filepath) > 0 else pd.DataFrame(columns=['STATUS', 'ATTITUDE_SCORE'])
@@ -52,7 +53,7 @@ def log_attendance(student_name, timestamp, is_entry, course_name, session_date)
             previous_exit_time = df_times['EXIT_TIME'].iloc[-1]
             diff_time = (datetime.strptime(timestamp, "%H:%M:%S") - datetime.strptime(previous_exit_time, "%H:%M:%S")).seconds // 60
             if diff_time > 30:
-                discounted_points = diff_time // 30  # Apply discount only for time over 30 minutes
+                discounted_points = diff_time // 30 
 
             df_times.at[len(df_times) - 1, 'DIFF_TIME'] = diff_time
             df_times.at[len(df_times) - 1, 'DISCOUNTED_POINTS'] = discounted_points
@@ -61,7 +62,7 @@ def log_attendance(student_name, timestamp, is_entry, course_name, session_date)
         df_times = df_times._append(new_entry, ignore_index=True)
         df_times.to_csv(attendance_filepath, index=False)
 
-        cutoff_time = datetime.strptime("07:00", "%H:%M").time()
+        cutoff_time = datetime.strptime(start_time, "%H:%M:%S").time()
         current_time = datetime.strptime(timestamp, "%H:%M:%S").time()
         status = "Asistencia" if current_time <= cutoff_time else "Tardanza"
 
@@ -157,7 +158,7 @@ while True:
     k = cv2.waitKey(1)
     if k == ord('e') or k == ord('x'):
         is_entry = k == ord('e')
-        log_attendance(str(output[0]), timestamp, is_entry=is_entry, course_name=course_name, session_date=session_date)
+        log_attendance(str(output[0]), timestamp, is_entry=is_entry, course_name=course_name, session_date=session_date, start_time=session_info['start'], end_time=session_info['end'])
     elif k == ord('q'):
         break
 
