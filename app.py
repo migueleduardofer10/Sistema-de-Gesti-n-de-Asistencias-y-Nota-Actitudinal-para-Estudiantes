@@ -16,10 +16,14 @@ def load_data(student_file):
     return times_df, details_df
 
 
-def run_script(script_name, course_name, session_date):
+def run_script(script_name, course_name=None, session_date=None):
     try:
-        # Format the date and execute the script
-        subprocess.run(['python', script_name, course_name, session_date.strftime('%Y-%m-%d')], check=True)
+        command = ['python', script_name]
+        if course_name and session_date:
+            # Añadimos los argumentos necesarios para el script de test.py
+            command.extend([course_name, session_date.strftime('%Y-%m-%d')])
+        # Ejecutar el comando completo
+        subprocess.run(command, check=True)
         st.success(f"El proceso para {script_name} ha comenzado con éxito.")
     except subprocess.CalledProcessError as e:
         st.error(f"Falló la ejecución de {script_name}: {e}")
@@ -43,21 +47,17 @@ def setup_course_page():
         if not os.path.exists(directory):
             os.makedirs(directory)
         file_path = os.path.join(directory, 'courses_data.json')
-        
         if os.path.exists(file_path):
             with open(file_path, 'r') as file:
                 data = json.load(file)
                 data.append(course_info)  
         else:
             data = [course_info]  
-        
         with open(file_path, 'w') as file:
             json.dump(data, file, indent=4)
-        
         st.success(f"Configuración guardada para el curso {class_name} desde {start_date} hasta {end_date}")
-        
-        if st.button("Agregar Caras al Curso"):
-            run_script('add_faces.py', class_name, start_date)
+        st.button("Agregar caras al curso", on_click=lambda: run_script('add_faces.py'))
+
 
 def list_files(course_name, date):
     session_date_str = date.strftime('%Y-%m-%d')
