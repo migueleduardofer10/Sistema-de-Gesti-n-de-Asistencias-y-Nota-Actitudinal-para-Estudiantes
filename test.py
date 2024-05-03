@@ -48,6 +48,9 @@ def log_attendance(student_name, timestamp, is_entry, course_name, session_date,
     df_details = pd.read_csv(details_filepath) if os.path.getsize(details_filepath) > 0 else pd.DataFrame(columns=['STATUS', 'ATTITUDE_SCORE'])
 
     if is_entry:
+        if not df_times.empty and pd.isna(df_times['EXIT_TIME'].iloc[-1]):
+            speak("No puedes registrar una entrada sin una salida previa.")
+            return
         discounted_points = 0
         if not df_times.empty and pd.notna(df_times['EXIT_TIME'].iloc[-1]):
             previous_exit_time = df_times['EXIT_TIME'].iloc[-1]
