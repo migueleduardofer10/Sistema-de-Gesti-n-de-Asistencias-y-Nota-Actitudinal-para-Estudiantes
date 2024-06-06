@@ -1,7 +1,16 @@
+import os
+from dotenv import load_dotenv
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-cred = credentials.Certificate('sistema-gestion-asistencias-firebase-adminsdk-r6ujg-98d4db8bc5.json')
+load_dotenv()
+
+cred_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+
+if not cred_path:
+    raise ValueError("No se ha definido la variable de entorno 'GOOGLE_APPLICATION_CREDENTIALS'")
+
+cred = credentials.Certificate(cred_path)
 firebase_admin.initialize_app(cred)
 
 db = firestore.client()
