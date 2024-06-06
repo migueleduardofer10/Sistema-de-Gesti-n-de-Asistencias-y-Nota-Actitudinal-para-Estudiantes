@@ -6,6 +6,7 @@ import subprocess
 from functools import partial
 import re 
 import json
+from firebase_config import db 
 
 def load_data(student_file):
     base_name = student_file.split('_times')[0]
@@ -43,21 +44,10 @@ def setup_course_page():
             'start_date': str(start_date),
             'end_date': str(end_date)
         }
-        directory = 'configured_courses'
-        if not os.path.exists(directory):
-            os.makedirs(directory)
-        file_path = os.path.join(directory, 'courses_data.json')
-        if os.path.exists(file_path):
-            with open(file_path, 'r') as file:
-                data = json.load(file)
-                data.append(course_info)  
-        else:
-            data = [course_info]  
-        with open(file_path, 'w') as file:
-            json.dump(data, file, indent=4)
+        # Guardar en Firestore
+        db.collection('courses').add(course_info)
         st.success(f"Configuración guardada para el curso {class_name} desde {start_date} hasta {end_date}")
         st.button("Agregar caras al curso", on_click=lambda: run_script('add_faces.py'))
-
 
 def list_files(course_name, date):
     session_date_str = date.strftime('%Y-%m-%d')
@@ -76,46 +66,39 @@ def view_file(file_path):
     
 def session_page():
     st.title("Registro de Sesión")
+    courses_ref = db.collection('courses')
+    courses = courses_ref.stream()
+    courses_data = {course.id: course.to_dict() for course in courses}
 
-    file_path = 'configured_courses/courses_data.json'
-    if os.path.exists(file_path):
-        with open(file_path, 'r') as file:
-            courses_data = json.load(file)
-        if courses_data:
-            course_list = [course['class_name'] for course in courses_data]
-            selected_course = st.selectbox('Selecciona un curso', course_list)
-            with st.form("session_form"):
-                session_date = st.date_input("Fecha de la Sesión")
-                session_start = st.time_input("Hora de Inicio")
-                session_end = st.time_input("Hora de Fin")
-                session_submit = st.form_submit_button("Registrar Sesión")
-            if session_submit:
-                session_info = {
-                    'date': str(session_date),
-                    'start': str(session_start),
-                    'end': str(session_end)
-                }
+    if courses_data:
+        course_list = [course['class_name'] for course in courses_data.values()]
+        selected_course = st.selectbox('Selecciona un curso', course_list)
+        with st.form("session_form"):
+            session_date = st.date_input("Fecha de la Sesión")
+            session_start = st.time_input("Hora de Inicio")
+            session_end = st.time_input("Hora de Fin")
+            session_submit = st.form_submit_button("Registrar Sesión")
+        if session_submit:
+            session_info = {
+                'date': str(session_date),
+                'start': str(session_start),
+                'end': str(session_end)
+            }
+            # Actualizar curso en Firestore
+            for course_id, course in courses_data.items():
+                if course['class_name'] == selected_course:
+                    if 'sessions' not in course:
+                        course['sessions'] = []
+                    course['sessions'].append(session_info)
+                    courses_ref.document(course_id).set(course)
+                    break
 
-                for course in courses_data:
-                    if course['class_name'] == selected_course:
-                        if 'sessions' not in course:
-                            course['sessions'] = []
-                        course['sessions'].append(session_info)
-                        break
+            st.success(f"Sesión registrada para {selected_course} el {session_date} de {session_start} a {session_end}")
 
-
-                with open(file_path, 'w') as file:
-                    json.dump(courses_data, file, indent=4)
-
-                st.success(f"Sesión registrada para {selected_course} el {session_date} de {session_start} a {session_end}")
-
-                button_callback = partial(run_script, 'test.py', selected_course, session_date)
-                st.button("Iniciar Asistencia", on_click=button_callback)
-        else:
-            st.error("No hay cursos configurados.")
+            button_callback = partial(run_script, 'test.py', selected_course, session_date)
+            st.button("Iniciar Asistencia", on_click=button_callback)
     else:
         st.error("No se ha configurado ningún curso aún.")
- 
 def main():
     st.sidebar.title("Navegación")
     page = st.sidebar.radio("Ir a", ["Configuración del Curso", "Registro de Sesión", "Visualizar Archivos"])
@@ -125,29 +108,27 @@ def main():
     elif page == "Registro de Sesión":
         session_page()
     elif page == "Visualizar Archivos":
-        # Cargar los nombres de los cursos desde el archivo JSON
-        file_path = 'configured_courses/courses_data.json'
-        if os.path.exists(file_path):
-            with open(file_path, 'r') as file:
-                courses_data = json.load(file)
-            if courses_data:
-                course_list = [course['class_name'] for course in courses_data]
-                selected_course = st.selectbox('Selecciona un Curso para visualizar archivos', course_list)
-                selected_date = st.date_input("Selecciona la fecha del curso")
-                detail_files, time_files = list_files(selected_course, selected_date)
+        # Cargar los nombres de los cursos desde Firestore
+        courses_ref = db.collection('courses')
+        courses = courses_ref.stream()
+        courses_data = {course.id: course.to_dict() for course in courses}
 
-                if detail_files or time_files:
-                    file_type = st.radio("Tipo de Archivo", ("Reporte de Entradas y Salidas", "Reporte Actitudinal Diario"))
-                    selected_file_list = detail_files if file_type == "Reporte Actitudinal Diario" else time_files
-                    selected_file = st.selectbox('Selecciona un archivo', selected_file_list)
-                    if st.button('Cargar Archivo'):
-                        view_file(selected_file)
-                else:
-                    st.error("No se encontraron archivos para este curso y fecha.")
+        if courses_data:
+            course_list = [course['class_name'] for course in courses_data.values()]
+            selected_course = st.selectbox('Selecciona un Curso para visualizar archivos', course_list)
+            selected_date = st.date_input("Selecciona la fecha del curso")
+            detail_files, time_files = list_files(selected_course, selected_date)
+
+            if detail_files or time_files:
+                file_type = st.radio("Tipo de Archivo", ("Reporte de Entradas y Salidas", "Reporte Actitudinal Diario"))
+                selected_file_list = detail_files if file_type == "Reporte Actitudinal Diario" else time_files
+                selected_file = st.selectbox('Selecciona un archivo', selected_file_list)
+                if st.button('Cargar Archivo'):
+                    view_file(selected_file)
             else:
-                st.error("No hay cursos configurados.")
+                st.error("No se encontraron archivos para este curso y fecha.")
         else:
-            st.error("No se ha configurado ningún curso aún.")
-
+            st.error("No hay cursos configurados.")
+            
 if __name__ == "__main__":
     main()

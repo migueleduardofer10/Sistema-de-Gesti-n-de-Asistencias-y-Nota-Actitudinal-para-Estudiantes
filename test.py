@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 import json
 from win32com.client import Dispatch
 import sys 
+from firebase_config import db 
 
 def speak(text):
     from win32com.client import Dispatch
@@ -93,57 +94,66 @@ def log_attendance(student_name, timestamp, is_entry, course_name, session_date,
 
 
 
+# Inicializar la captura de video y el detector de rostros
 video = cv2.VideoCapture(0)
 facedetect = cv2.CascadeClassifier('data/haarcascade_frontalface_default.xml')
 
+# Cargar etiquetas y datos de rostros desde archivos pickle
 with open('data/names.pkl', 'rb') as f:
     LABELS = pickle.load(f)
 with open('data/faces_data.pkl', 'rb') as f:
     FACES = pickle.load(f)
 
+# Configurar el clasificador KNN
 knn = KNeighborsClassifier(n_neighbors=5)
 knn.fit(FACES, LABELS)
 
+# Leer imagen de fondo
 imgBackground = cv2.imread("background2.jpg")
 
-# Read session information from JSON
-file_path = 'configured_courses/courses_data.json'
-if os.path.exists(file_path):
-    with open(file_path, 'r') as file:
-        courses_data = json.load(file)
-else:
-    print("Course configuration file not found.")
-    sys.exit()
-
+# Leer información de la sesión desde Firestore
 course_name = "DefaultCourse"
 session_date = datetime.now().strftime("%Y-%m-%d")
 
-# Argument handling
+# Manejo de argumentos
 if len(sys.argv) > 1:
     course_name = sys.argv[1]
 if len(sys.argv) > 2:
     session_date = sys.argv[2]
 
+# Obtener datos del curso y la sesión desde Firestore
+courses_ref = db.collection('courses')
+course_query = courses_ref.where('class_name', '==', course_name).stream()
+
+course_doc = None
+for doc in course_query:
+    course_doc = doc
+    break
+
+if course_doc is None:
+    print("Course configuration not found.")
+    sys.exit()
+
+course_data = course_doc.to_dict()
 session_info = None
-for course in courses_data:
-    if course['class_name'] == course_name:
-        if 'sessions' in course:
-            for session in course['sessions']:
-                if session['date'] == session_date:
-                    session_info = session
-                    break
+for session in course_data.get('sessions', []):
+    if session['date'] == session_date:
+        session_info = session
+        break
+
 if not session_info:
     print("Session information not found for the given course and date.")
     sys.exit()
 
+# Iniciar el bucle de captura de video
 while True:
     ret, frame = video.read()
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     faces = facedetect.detectMultiScale(gray, 1.3, 5)
 
     for (x, y, w, h) in faces:
-        crop_img = frame[y: y+h, x:x+w, :]
-        resized_img = cv2.resize(crop_img, (50,50)).flatten().reshape(1, -1)
+        crop_img = frame[y: y+h, x: x+w, :]
+        resized_img = cv2.resize(crop_img, (50, 50)).flatten().reshape(1, -1)
         output = knn.predict(resized_img)
         ts = time.time()
         date = datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
@@ -165,5 +175,6 @@ while True:
     elif k == ord('q'):
         break
 
+# Liberar recursos
 video.release()
 cv2.destroyAllWindows()
