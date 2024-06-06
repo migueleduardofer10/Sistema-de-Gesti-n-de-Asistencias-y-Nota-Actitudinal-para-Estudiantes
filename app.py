@@ -64,6 +64,49 @@ def view_file(file_path):
     df = pd.read_csv(f"Attendance/{file_path}")
     st.write(df)
     
+
+def generate_semestral_report_for_student(course_name, student_name):
+    folder_path = "Attendance"
+    all_files = os.listdir(folder_path)
+    detail_files = [f for f in all_files if f.startswith(course_name) and "_details.csv" in f and student_name in f]
+
+    all_scores = []
+
+    for file in detail_files:
+        details_df = pd.read_csv(os.path.join(folder_path, file))
+        if 'ATTITUDE_SCORE' in details_df.columns:
+            all_scores.extend(details_df['ATTITUDE_SCORE'].tolist())
+
+    if all_scores:
+        semestral_average = sum(all_scores) / len(all_scores)
+        st.write(f"Promedio actitudinal semestral para {student_name} en {course_name}: {semestral_average:.2f}")
+    else:
+        st.write(f"No se encontraron datos de puntajes actitudinales para {student_name} en el curso {course_name}")
+
+def generate_semestral_report_for_course(course_name):
+    folder_path = "Attendance"
+    all_files = os.listdir(folder_path)
+    detail_files = [f for f in all_files if f.startswith(course_name) and "_details.csv" in f]
+
+    student_scores = {}
+
+    for file in detail_files:
+        student_name = file.split('_')[-2]  # Extraer el nombre del estudiante del nombre del archivo
+        details_df = pd.read_csv(os.path.join(folder_path, file))
+        if 'ATTITUDE_SCORE' in details_df.columns:
+            if student_name not in student_scores:
+                student_scores[student_name] = []
+            student_scores[student_name].extend(details_df['ATTITUDE_SCORE'].tolist())
+
+    if student_scores:
+        st.write(f"Promedios actitudinales semestrales para el curso {course_name}:")
+        for student_name, scores in student_scores.items():
+            semestral_average = sum(scores) / len(scores)
+            st.write(f"{student_name}: {semestral_average:.2f}")
+    else:
+        st.write(f"No se encontraron datos de puntajes actitudinales para el curso {course_name}")
+
+
 def session_page():
     st.title("Registro de Sesión")
     courses_ref = db.collection('courses')
@@ -99,9 +142,11 @@ def session_page():
             st.button("Iniciar Asistencia", on_click=button_callback)
     else:
         st.error("No se ha configurado ningún curso aún.")
+
+
 def main():
     st.sidebar.title("Navegación")
-    page = st.sidebar.radio("Ir a", ["Configuración del Curso", "Registro de Sesión", "Visualizar Archivos"])
+    page = st.sidebar.radio("Ir a", ["Configuración del Curso", "Registro de Sesión", "Visualizar Archivos", "Reporte Actitudinal Semestral por Alumno", "Reporte Actitudinal Semestral por Curso"])
 
     if page == "Configuración del Curso":
         setup_course_page()
@@ -129,6 +174,34 @@ def main():
                 st.error("No se encontraron archivos para este curso y fecha.")
         else:
             st.error("No hay cursos configurados.")
-            
+          
+    elif page == "Reporte Actitudinal Semestral por Alumno":
+        # Cargar los nombres de los cursos desde Firestore
+        courses_ref = db.collection('courses')
+        courses = courses_ref.stream()
+        courses_data = {course.id: course.to_dict() for course in courses}
+
+        if courses_data:
+            course_list = [course['class_name'] for course in courses_data.values()]
+            selected_course = st.selectbox('Selecciona un Curso para generar el reporte semestral por alumno', course_list)
+            student_name = st.text_input("Nombre del Estudiante")
+            if st.button('Generar Reporte'):
+                generate_semestral_report_for_student(selected_course, student_name)
+        else:
+            st.error("No hay cursos configurados.")
+    elif page == "Reporte Actitudinal Semestral por Curso":
+        # Cargar los nombres de los cursos desde Firestore
+        courses_ref = db.collection('courses')
+        courses = courses_ref.stream()
+        courses_data = {course.id: course.to_dict() for course in courses}
+
+        if courses_data:
+            course_list = [course['class_name'] for course in courses_data.values()]
+            selected_course = st.selectbox('Selecciona un Curso para generar el reporte semestral', course_list)
+            if st.button('Generar Reporte'):
+                generate_semestral_report_for_course(selected_course)
+        else:
+            st.error("No hay cursos configurados.")
+
 if __name__ == "__main__":
     main()
