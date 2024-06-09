@@ -70,8 +70,8 @@ def read_csv_data(file_path):
     df = pd.read_csv(file_path)
     return df
 
-def create_report_message(parent_name, student_name, times_df, details_df):
-    message = f"Buen día, Sr(a) {parent_name}. Le envío el reporte de entradas y salidas del aula de su hijo {student_name}.\n"
+def create_daily_report_message(parent_name, student_name, times_df, details_df, report_date):
+    message = f"Buen día, Sr(a) {parent_name}. Le envío el reporte de entradas y salidas del aula de su hijo {student_name}, del día {report_date}.\n"
     first_entry_time = None
     first_entry_status = "Asistencia"
     total_discounted_points = 0
@@ -92,14 +92,11 @@ def create_report_message(parent_name, student_name, times_df, details_df):
         if pd.notna(exit_time):
             message += f"\nLuego, salió del aula a las {exit_time}."
         
-        if pd.notna(diff_time) and diff_time != 0:
+        if pd.notna(entry_time) and pd.notna(diff_time) and diff_time != 0:
             message += f"\nPasó {int(diff_time)} minutos fuera del aula"
-        
-        if pd.notna(discounted_points) and discounted_points != 0:
-            total_discounted_points += discounted_points
-            message += f", restándole {int(discounted_points)} puntos a su nota actitudinal diaria."
-        
-        if (pd.notna(diff_time) and diff_time != 0) or (pd.notna(discounted_points) and discounted_points != 0):
+            if pd.notna(discounted_points) and discounted_points != 0:
+                total_discounted_points += discounted_points
+                message += f", restándole {int(discounted_points)} puntos a su nota actitudinal diaria."
             message += "."
 
     if first_entry_status == "Tardanza":
@@ -111,8 +108,13 @@ def create_report_message(parent_name, student_name, times_df, details_df):
         message += f" Además, a su hijo se le restó un total de {int(total_discounted_points)} puntos por estar fuera del aula."
 
     attitude_score = details_df['ATTITUDE_SCORE'].values[0] if 'ATTITUDE_SCORE' in details_df.columns else "N/A"
-    message += f"\n\nEl resultado de su nota actitudinal del día de hoy es de {attitude_score}."
+    message += f"\nEl resultado de su nota actitudinal del día de hoy es de {attitude_score}."
     
+    return message
+
+def create_semestral_report_message(parent_name, student_name, course_name, semestral_average):
+    message = f"Buen día, Sr(a) {parent_name}. Le envío el reporte semestral del curso {course_name} de su hijo {student_name}.\n"
+    message += f"\nEl promedio actitudinal semestral de su hijo es de {semestral_average:.2f}."
     return message
 
 def send_whatsapp_message(parent_name, parent_phone, message):
@@ -128,15 +130,19 @@ def send_whatsapp_message(parent_name, parent_phone, message):
         st.error(f"Error al enviar el mensaje de WhatsApp: {e}")
         return None
 
-def handle_send_report(parent_name, parent_phone, times_df, details_df, student_name):
+def handle_send_daily_report(parent_name, parent_phone, times_df, details_df, student_name, report_date):
     placeholder = st.empty()
     if not parent_name or not parent_phone:
         placeholder.error("Por favor, complete todos los campos.")
         time.sleep(2)
         placeholder.empty()
+    elif not parent_phone.isdigit():
+        placeholder.error("El número de teléfono solo debe contener dígitos.")
+        time.sleep(2)
+        placeholder.empty()
     else:
         full_parent_phone = f"+51{parent_phone}"
-        report_message = create_report_message(parent_name, student_name, times_df, details_df)
+        report_message = create_daily_report_message(parent_name, student_name, times_df, details_df, report_date)
         message_sid = send_whatsapp_message(parent_name, full_parent_phone, report_message)
         if message_sid:
             placeholder.success(f"Reporte enviado a {parent_name} al número {full_parent_phone}. (SID del mensaje: {message_sid})")
@@ -146,6 +152,26 @@ def handle_send_report(parent_name, parent_phone, times_df, details_df, student_
             placeholder.error("Error al enviar el mensaje de WhatsApp.")
             time.sleep(2)
             placeholder.empty()
+
+def handle_send_semestral_report(parent_name, parent_phone, student_name, course_name, semestral_average):
+    placeholder = st.empty()
+    if not parent_name or not parent_phone:
+        placeholder.error("Por favor, complete todos los campos.")
+        time.sleep(2)
+        placeholder.empty()
+    else:
+        full_parent_phone = f"+51{parent_phone}"
+        report_message = create_semestral_report_message(parent_name, student_name, course_name, semestral_average)
+        message_sid = send_whatsapp_message(parent_name, full_parent_phone, report_message)
+        if message_sid:
+            placeholder.success(f"Reporte semestral enviado a {parent_name} al número {full_parent_phone}. (SID del mensaje: {message_sid})")
+            time.sleep(2)
+            placeholder.empty()
+        else:
+            placeholder.error("Error al enviar el mensaje de WhatsApp.")
+            time.sleep(2)
+            placeholder.empty()
+            
             
 def generate_semestral_report_for_student(course_name, student_name):
     folder_path = "Attendance"
@@ -162,6 +188,16 @@ def generate_semestral_report_for_student(course_name, student_name):
     if all_scores:
         semestral_average = sum(all_scores) / len(all_scores)
         st.write(f"Promedio actitudinal semestral para {student_name} en {course_name}: {semestral_average:.2f}")
+
+        def on_submit():
+            parent_name = st.session_state["parent_name"]
+            parent_phone = st.session_state["parent_phone"]
+            handle_send_semestral_report(parent_name, parent_phone, student_name, course_name, semestral_average)
+
+        with st.form("send_report_form"):
+            parent_name = st.text_input("Nombre del Padre", key="parent_name")
+            parent_phone = st.text_input("Teléfono del Padre", key="parent_phone", placeholder="960904256")
+            st.form_submit_button(label='Enviar', on_click=on_submit)
     else:
         st.write(f"No se encontraron datos de puntajes actitudinales para {student_name} en el curso {course_name}")
 
@@ -252,7 +288,8 @@ def main():
                 selected_file_list = detail_files if file_type == "Reporte Actitudinal Diario" else time_files
                 selected_file = st.selectbox('Selecciona un archivo', selected_file_list)
                 if st.button('Cargar Archivo'):
-                    student_name = selected_file.split('_')[2]
+                    student_name = selected_file.split('_')[3]
+                    report_date = selected_file.split('_')[2]  # Suponiendo que la fecha está en la posición [1] del nombre del archivo
                     if file_type == "Reporte de Entradas y Salidas":
                         times_df = read_csv_data(f"Attendance/{selected_file}")
                         details_df = read_csv_data(f"Attendance/{selected_file.replace('_times', '_details')}")
@@ -265,7 +302,7 @@ def main():
                     def on_submit():
                         parent_name = st.session_state["parent_name"]
                         parent_phone = st.session_state["parent_phone"]
-                        handle_send_report(parent_name, parent_phone, times_df, details_df, student_name)
+                        handle_send_daily_report(parent_name, parent_phone, times_df, details_df, student_name, report_date)
 
                     with st.form("send_report_form"):
                         parent_name = st.text_input("Nombre del Padre", key="parent_name")
@@ -276,7 +313,6 @@ def main():
                 st.error("No se encontraron archivos para este curso y fecha.")
         else:
             st.error("No hay cursos configurados.")
-
             
     elif page == "Reporte Semestral del Curso por Estudiante":
         st.title("Reporte semestral del curso por estudiante")
