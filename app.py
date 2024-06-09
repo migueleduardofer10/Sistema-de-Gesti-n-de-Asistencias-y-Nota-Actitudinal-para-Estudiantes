@@ -111,7 +111,7 @@ def create_report_message(parent_name, student_name, times_df, details_df):
         message += f" Además, a su hijo se le restó un total de {int(total_discounted_points)} puntos por estar fuera del aula."
 
     attitude_score = details_df['ATTITUDE_SCORE'].values[0] if 'ATTITUDE_SCORE' in details_df.columns else "N/A"
-    message += f"\nEl resultado de su nota actitudinal del día de hoy es de {attitude_score}."
+    message += f"\n\nEl resultado de su nota actitudinal del día de hoy es de {attitude_score}."
     
     return message
 
