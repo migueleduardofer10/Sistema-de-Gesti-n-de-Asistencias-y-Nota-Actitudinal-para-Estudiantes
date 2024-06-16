@@ -1,13 +1,31 @@
 import streamlit as st
 import pandas as pd
 import os
+import json
 from datetime import datetime
 import subprocess
 from functools import partial
-from firebase_config import db
 from config import TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_NUMBER
 from twilio.rest import Client
 import time
+
+COURSES_FILE = "configured_courses/courses_data.json"
+
+# Función para cargar los datos del archivo JSON
+def load_courses_data():
+    if not os.path.exists('configured_courses'):
+        os.makedirs('configured_courses')
+    if os.path.exists(COURSES_FILE):
+        with open(COURSES_FILE, 'r') as f:
+            return json.load(f)
+    return {}
+
+# Función para guardar los datos en el archivo JSON
+def save_courses_data(data):
+    if not os.path.exists('configured_courses'):
+        os.makedirs('configured_courses')
+    with open(COURSES_FILE, 'w') as f:
+        json.dump(data, f, indent=4)
 
 def load_data(student_file):
     base_name = student_file.split('_times')[0]
@@ -17,14 +35,11 @@ def load_data(student_file):
     details_df = pd.read_csv(details_path)
     return times_df, details_df
 
-
 def run_script(script_name, course_name=None, session_date=None):
     try:
         command = ['python', script_name]
         if course_name and session_date:
-            # Añadimos los argumentos necesarios para el script de test.py
             command.extend([course_name, session_date.strftime('%Y-%m-%d')])
-        # Ejecutar el comando completo
         subprocess.run(command, check=True)
         st.success(f"El proceso para {script_name} ha comenzado con éxito.")
     except subprocess.CalledProcessError as e:
@@ -43,10 +58,12 @@ def setup_course_page():
         course_info = {
             'class_name': class_name,
             'start_date': str(start_date),
-            'end_date': str(end_date)
+            'end_date': str(end_date),
+            'sessions': []
         }
-        # Guardar en Firestore
-        db.collection('courses').add(course_info)
+        courses_data = load_courses_data()
+        courses_data[class_name] = course_info
+        save_courses_data(courses_data)
         st.success(f"Configuración guardada para el curso {class_name} desde {start_date} hasta {end_date}")
         st.button("Agregar caras al curso", on_click=lambda: run_script('add_faces.py'))
 
@@ -64,8 +81,7 @@ def list_files(course_name, date):
 def view_file(file_path):
     df = pd.read_csv(f"Attendance/{file_path}")
     st.write(df)
-    
-# Funciones auxiliares
+
 def read_csv_data(file_path):
     df = pd.read_csv(file_path)
     return df
@@ -85,7 +101,6 @@ def create_daily_report_message(parent_name, student_name, times_df, details_df,
         if pd.notna(entry_time):
             if first_entry_time is None:
                 first_entry_time = entry_time
-                # Asumamos que cualquier hora de llegada después de las 08:00:00 es tardanza
                 first_entry_status = "Asistencia" if entry_time <= "08:00:00" else "Tardanza"
             message += f"\nSu hijo llegó al aula a las {entry_time}."
         
@@ -171,8 +186,7 @@ def handle_send_semestral_report(parent_name, parent_phone, student_name, course
             placeholder.error("Error al enviar el mensaje de WhatsApp.")
             time.sleep(2)
             placeholder.empty()
-            
-            
+
 def generate_semestral_report_for_student(course_name, student_name):
     folder_path = "Attendance"
     all_files = os.listdir(folder_path)
@@ -209,7 +223,7 @@ def generate_semestral_report_for_course(course_name):
     student_scores = {}
 
     for file in detail_files:
-        student_name = file.split('_')[-2]  # Extraer el nombre del estudiante del nombre del archivo
+        student_name = file.split('_')[-2]
         details_df = pd.read_csv(os.path.join(folder_path, file))
         if 'ATTITUDE_SCORE' in details_df.columns:
             if student_name not in student_scores:
@@ -224,12 +238,9 @@ def generate_semestral_report_for_course(course_name):
     else:
         st.write(f"No se encontraron datos de puntajes actitudinales para el curso {course_name}")
 
-
 def session_page():
     st.title("Registro de Sesión")
-    courses_ref = db.collection('courses')
-    courses = courses_ref.stream()
-    courses_data = {course.id: course.to_dict() for course in courses}
+    courses_data = load_courses_data()
 
     if courses_data:
         course_list = [course['class_name'] for course in courses_data.values()]
@@ -245,22 +256,17 @@ def session_page():
                 'start': str(session_start),
                 'end': str(session_end)
             }
-            # Actualizar curso en Firestore
-            for course_id, course in courses_data.items():
+            for course_name, course in courses_data.items():
                 if course['class_name'] == selected_course:
-                    if 'sessions' not in course:
-                        course['sessions'] = []
                     course['sessions'].append(session_info)
-                    courses_ref.document(course_id).set(course)
                     break
-
+            save_courses_data(courses_data)
             st.success(f"Sesión registrada para {selected_course} el {session_date} de {session_start} a {session_end}")
 
             button_callback = partial(run_script, 'test.py', selected_course, session_date)
             st.button("Iniciar Asistencia", on_click=button_callback)
     else:
         st.error("No se ha configurado ningún curso aún.")
-
 
 def main():
     st.sidebar.title("Navegación")
@@ -270,12 +276,9 @@ def main():
         setup_course_page()
     elif page == "Registro de Sesión":
         session_page()
-
     elif page == "Reporte Actitudinal Diario":
         st.title("Reporte actitudinal diario")
-        courses_ref = db.collection('courses')
-        courses = courses_ref.stream()
-        courses_data = {course.id: course.to_dict() for course in courses}
+        courses_data = load_courses_data()
 
         if courses_data:
             course_list = [course['class_name'] for course in courses_data.values()]
@@ -288,8 +291,8 @@ def main():
                 selected_file_list = detail_files if file_type == "Reporte Actitudinal Diario" else time_files
                 selected_file = st.selectbox('Selecciona un archivo', selected_file_list)
                 if st.button('Cargar Archivo'):
-                    student_name = selected_file.split('_')[3]
-                    report_date = selected_file.split('_')[2]  # Suponiendo que la fecha está en la posición [1] del nombre del archivo
+                    student_name = selected_file.split('_')[2]
+                    report_date = selected_file.split('_')[1]
                     if file_type == "Reporte de Entradas y Salidas":
                         times_df = read_csv_data(f"Attendance/{selected_file}")
                         details_df = read_csv_data(f"Attendance/{selected_file.replace('_times', '_details')}")
@@ -313,13 +316,9 @@ def main():
                 st.error("No se encontraron archivos para este curso y fecha.")
         else:
             st.error("No hay cursos configurados.")
-            
     elif page == "Reporte Semestral del Curso por Estudiante":
         st.title("Reporte semestral del curso por estudiante")
-        # Cargar los nombres de los cursos desde Firestore
-        courses_ref = db.collection('courses')
-        courses = courses_ref.stream()
-        courses_data = {course.id: course.to_dict() for course in courses}
+        courses_data = load_courses_data()
 
         if courses_data:
             course_list = [course['class_name'] for course in courses_data.values()]
@@ -331,10 +330,7 @@ def main():
             st.error("No hay cursos configurados.")
     elif page == "Reporte Semestral General del Curso":
         st.title("Reporte semestral general del curso")
-        # Cargar los nombres de los cursos desde Firestore
-        courses_ref = db.collection('courses')
-        courses = courses_ref.stream()
-        courses_data = {course.id: course.to_dict() for course in courses}
+        courses_data = load_courses_data()
 
         if courses_data:
             course_list = [course['class_name'] for course in courses_data.values()]

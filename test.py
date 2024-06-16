@@ -9,8 +9,25 @@ import time
 from datetime import datetime, timedelta
 import json
 from win32com.client import Dispatch
-import sys 
-from firebase_config import db 
+import sys
+
+COURSES_FILE = "configured_courses/courses_data.json"
+
+# Función para cargar los datos del archivo JSON
+def load_courses_data():
+    if not os.path.exists('configured_courses'):
+        os.makedirs('configured_courses')
+    if os.path.exists(COURSES_FILE):
+        with open(COURSES_FILE, 'r') as f:
+            return json.load(f)
+    return {}
+
+# Función para guardar los datos en el archivo JSON
+def save_courses_data(data):
+    if not os.path.exists('configured_courses'):
+        os.makedirs('configured_courses')
+    with open(COURSES_FILE, 'w') as f:
+        json.dump(data, f, indent=4)
 
 def speak(text):
     from win32com.client import Dispatch
@@ -19,7 +36,7 @@ def speak(text):
 
 def check_and_create_files(student_name, course_name, session_date):
     today = datetime.now().strftime('%Y-%m-%d')
-    base_dir = f"Attendance/{course_name}_{session_date}_{student_name}"  #
+    base_dir = f"Attendance/{course_name}_{session_date}_{student_name}"
     attendance_filepath = f"{base_dir}_times.csv"
     details_filepath = f"{base_dir}_details.csv"
 
@@ -39,7 +56,6 @@ def check_and_create_files(student_name, course_name, session_date):
             writer.to_csv(csvfile, index=False)
 
     return attendance_filepath, details_filepath
-
 
 def log_attendance(student_name, timestamp, is_entry, course_name, session_date, start_time, end_time):
     print("Start Time ", start_time)
@@ -92,8 +108,6 @@ def log_attendance(student_name, timestamp, is_entry, course_name, session_date,
         else:
             speak("No puedes registrar una salida sin una entrada previa.")
 
-
-
 # Inicializar la captura de video y el detector de rostros
 video = cv2.VideoCapture(0)
 facedetect = cv2.CascadeClassifier('data/haarcascade_frontalface_default.xml')
@@ -111,7 +125,7 @@ knn.fit(FACES, LABELS)
 # Leer imagen de fondo
 imgBackground = cv2.imread("background2.jpg")
 
-# Leer información de la sesión desde Firestore
+# Leer información de la sesión desde el archivo JSON
 course_name = "DefaultCourse"
 session_date = datetime.now().strftime("%Y-%m-%d")
 
@@ -121,20 +135,13 @@ if len(sys.argv) > 1:
 if len(sys.argv) > 2:
     session_date = sys.argv[2]
 
-# Obtener datos del curso y la sesión desde Firestore
-courses_ref = db.collection('courses')
-course_query = courses_ref.where('class_name', '==', course_name).stream()
-
-course_doc = None
-for doc in course_query:
-    course_doc = doc
-    break
-
-if course_doc is None:
+# Obtener datos del curso y la sesión desde el archivo JSON
+courses_data = load_courses_data()
+if course_name not in courses_data:
     print("Course configuration not found.")
     sys.exit()
 
-course_data = course_doc.to_dict()
+course_data = courses_data[course_name]
 session_info = None
 for session in course_data.get('sessions', []):
     if session['date'] == session_date:
